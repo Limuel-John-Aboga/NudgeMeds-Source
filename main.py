@@ -1,55 +1,19 @@
 # Created by the man himself, William Otsuro, probably he have a John now XD.
 # Still depressed, a hater, and colder.
 # Still dedicated to Arisu, and of course, Mathematics! :P
-# As of May 23, 2024, this code is dedicated to all whom teachers who voted for us to be in expo!
-# This is the real trademark of Limuel John Aboga, with the bytename, William John Otsuro
-from machine import Pin, PWM
+# Thank you to the people who appreciated our product!
+from machine import Pin
 import socket
 from time import sleep
 import network
 from ds1302 import DS1302
+import stepper
 
-ds = DS1302(Pin(10), Pin(11), Pin(12)) # (CLK, DAT, RST)
+
+ds = DS1302(Pin(10), Pin(11), Pin(12)) #(CLK, DAT, RST)
 alarm = Pin(15, Pin.OUT)
-m1_ln4 = PWM(Pin(16))
-m1_ln3 = PWM(Pin(17))
-m2_ln2 = PWM(Pin(18))
-m2_ln1 = PWM(Pin(19))
-m3_ln4 = PWM(Pin(20))
-m3_ln3 = PWM(Pin(21))
-m4_ln2 = PWM(Pin(22))
-m4_ln1 = PWM(Pin(26))
-m1_s = PWM(Pin(9))
-m2_s = PWM(Pin(8))
-m3_s = PWM(Pin(7))
-m4_s = PWM(Pin(6))
-
-def set_s(value=65025):
-    m1_s.freq(1000)
-    m2_s.freq(1000)
-    m3_s.freq(1000)
-    m4_s.freq(1000)
-    m1_s.duty_u16(value)
-    m2_s.duty_u16(value)
-    m3_s.duty_u16(value)
-    m4_s.duty_u16(value)
+motor = stepper.HalfStepMotor.frompins(16, 17, 18, 19)
     
-set_s()
-    
-def run_m(mach, ln_even, ln_odd):
-    if mach == 1:
-        m1_ln4.value(ln_even)
-        m1_ln3.value(ln_odd)
-    if mach == 2:
-        m2_ln2.value(ln_even)
-        m2_ln1.value(ln_odd)
-    if mach == 3:
-        m3_ln4.value(ln_even)
-        m3_ln3.value(ln_odd)
-    if mach == 4:
-        m4_ln2.value(ln_even)
-        m4_ln1.value(ln_odd)
-
 data = open("data.txt", "r").readlines()
 ssid = data[0].replace("\n", "")
 password = data[1]
@@ -63,14 +27,11 @@ h_addr = socket.getaddrinfo('0.0.0.0', 80)[0][-1]
 s = socket.socket()
 s.bind(h_addr)
 s.listen(1)
-
 while True:
     try:
         client, addr = s.accept()
         request = client.recv(4096)
         response = open("home.html", "r").read()
-        print(f"{request}\n")
-        
         if str(request).find("POST") != -1:
             if str(request).find("/config") != -1:
                 p_request = str(request) + "%%"
@@ -79,21 +40,17 @@ while True:
                 pos_pe = p_request.find("'%%")
                 ssid = ""
                 password = ""
-                
                 for i in range(pos_eq + 5, pos_am):
                     ssid = ssid + p_request[i]
-                    
                 for i in range(pos_am + 10, pos_pe):
                     password = password + p_request[i]
-                
                 f = open("data.txt", "w")
                 f.write(ssid + "\n")
                 f.close()
                 f = open("data.txt", "a")
                 f.write(password)
                 f.close()
-                response = open("closing-wf.html", "r").read()
-                
+                response = open("closing-wf.html", "r").read()    
             if str(request).find("/schedule") != -1:
                 p_request = client.recv(4096)
                 client.send("HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n")
@@ -102,7 +59,6 @@ while True:
                 s.close()
                 ap.active(False)
                 break
-                
         if str(request).find("GET") != -1:
             if str(request).find("/config") != -1:
                 response = open("config.html", "r").read()
@@ -116,7 +72,6 @@ while True:
                 response = open("manual.html", "r").read()
             if str(request).find("/update") != -1:
                 response = open("update.html", "r").read()
-        
         client.send("HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n")
         client.send(response)
         client.close()
@@ -129,16 +84,21 @@ def values(alpha, week, req):
     finder = req.find(val)
     value = req[finder + 11] + req[finder + 12] + ":" + req[finder + 16] + req[finder + 17] + " " + req[finder + 19] + req[finder + 20]
     if req[finder + 20] == "&":
-        value = "0" + req[finder + 11] + ":" + req[finder + 15] + req[finder + 16] + " " + req[finder + 18] + req[finder + 19]  
+        value = "0" + req[finder + 11] + ":" + req[finder + 15] + req[finder + 16] + " " + req[finder + 18] + req[finder + 19]
+    if req[finder + 11].upper() == "N":
+        value = "None"
 
     return value
 
 request = str(request) + str(p_request)
 request = request.replace("'b'", "")
+request = request.replace("'", "&")
 sched = []
 schedules = []
 weeks = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 alpha = ["A", "B", "C", "D"]
+
+print(request)
 
 const = 0
 for w in weeks:
@@ -174,10 +134,12 @@ def time():
     
     return time
 
-print(sched)
+motor.reset()
 constant = 99
-m_constant = 0
-run = 0
+m_const = 0
+angle = 0
+val = 1
+a_const = True
 while True:
     while week() == constant:
         pass
@@ -186,42 +148,28 @@ while True:
     
     for i in list:
         while True:
+            if i == "None":
+                i = time()
+                a_const = False
             if time() == i.upper():
-                if m_constant == 0:
-                    run_m(1, 0, 1)
-                    sleep(5)
-                    run_m(1, 0, 0)
-                if m_constant == 1:
-                    run_m(2, 1, 0)
-                    sleep(5)
-                    run_m(2, 0, 0)
-                if m_constant == 2:
-                    run_m(3, 0, 1)
-                    sleep(5)
-                    run_m(3, 0, 0)
-                if m_constant == 3:
-                    run_m(4, 1, 0)
-                    sleep(5)
-                    run_m4(4, 0, 0)
-                    m_constant = -1
-                m_constant = m_constant + 1
-                alarm.high()
-                sleep(10)
-                
-                alarm.low()
-                
+                if m_const == 0:
+                    angle = 75
+                if m_const == 1:
+                    angle = 140
+                if m_const == 2:
+                    angle = 230
+                if m_const == 3:
+                    angle = 285
+                motor.step_until_angle(angle)
+                if a_const == False:
+                    val = 0
+                alarm.value(val)
+                sleep(5)
+                alarm.value(0)
+                val = 1
+                m_const = m_const + 1
                 break
+                
+    motor.step_until_angle(0)
     constant = week()
-    run = run + 1
-    if run == 6:
-        run = 0
-        machs_e = [2, 4]
-        machs_o = [1, 3]
-        for i in machs_o:
-            run_m(i, 1, 0)
-        for i in machs_e:
-            run_m(i, 0, 1)
-        sleep(5)
-        machs = machs_e + machs_o
-        for i in machs:
-            run_m(i, 0, 0)
+    m_const = 0
